@@ -638,33 +638,127 @@ const SUBJECT_MCQS = {
 };
 
 (function fillAllChapterPools(){
-  // Remove only previously auto-generated chapter copies.
+  // Remove previously generated copies, then build a separate 30-question
+  // pool for every catalog chapter. Original questions are kept untouched.
   for(let i=questionBank.length-1;i>=0;i--){
-    if(typeof questionBank[i][2]==="string" && questionBank[i][2].includes("• Practice ")) questionBank.splice(i,1);
+    if(typeof questionBank[i][2]==="string" && questionBank[i][2].startsWith("[QN-GEN]")) questionBank.splice(i,1);
   }
 
-  Object.entries(CHAPTERS).forEach(([subject, chapters])=>{
-    const seeds=SUBJECT_MCQS[subject]||[];
-    if(!seeds.length) return;
+  const subjectNames = Object.fromEntries(Object.values(SUBJECTS).flat().map(([v,n])=>[v,n]));
+  const other=(subject,ch)=> (CHAPTERS[subject]||[]).filter(x=>x!==ch);
+  const uniq=(arr)=>[...new Set(arr)].slice(0,4);
+  const mcq=(subject,chapter,q,correct,wrong,explain)=>{
+    let opts=uniq([correct,...wrong]);
+    while(opts.length<4) opts.push("উপরের কোনোটিই নয়");
+    // Deterministic rotation makes correct answers appear in different positions.
+    const shift=(chapter.length*3 + q.length + (opts[0]||'').length)%4;
+    const rotated=opts.map((_,k)=>opts[(k+shift)%4]);
+    return [subject,chapter,`[QN-GEN] ${q}`,rotated,rotated.indexOf(correct),explain];
+  };
 
-    chapters.forEach(chapter=>{
-      const existing=questionBank.filter(q=>q[0]===subject && q[1]===chapter);
-      const used=new Set(existing.map(q=>q[2]));
-      for(let i=existing.length;i<30;i++){
-        const seed=seeds[i%seeds.length];
-        const num=i+1;
-        const q=[
-          subject,
-          chapter,
-          `${chapter} — ${seed[0]} (প্রশ্ন ${num})`,
-          [...seed[1]],
-          seed[2],
-          `${seed[3]} এটি ${chapter} অধ্যায়ের practice question।`
-        ];
-        if(!used.has(q[2])) { questionBank.push(q); used.add(q[2]); }
+  function build(subject,chapter,i){
+    const n=i+1, o=other(subject,chapter), a=o[i%Math.max(1,o.length)]||"অন্য অধ্যায়", b=o[(i+3)%Math.max(1,o.length)]||"অন্য অধ্যায়", c=o[(i+5)%Math.max(1,o.length)]||"অন্য অধ্যায়";
+    const v1=(i%9)+2, v2=(i%7)+3, v3=(i%5)+2;
+    const s=subjectNames[subject]||subject;
+
+    if(subject==="math"||subject==="highermath"){
+      if(/বাস্তব সংখ্যা|Arithmetic/i.test(chapter)){
+        const x=v1*2,y=v2*2; return mcq(subject,chapter,i,`${x+y}`, [`${x*y}`,`${x+y+1}`,`${x+y-2}`],`${x}+${y} = ${x+y}।`);
       }
-    });
-  });
+      if(/বীজগাণিতিক রাশি/.test(chapter)){
+        return mcq(subject,chapter,i,`${v1+v2}x`, [`${v1*v2}x`,`x+${v1+v2}`,`${v1-v2}x`],`${v1}x + ${v2}x = ${v1+v2}x।`);
+      }
+      if(/সমীকরণ/.test(chapter)){
+        const rhs=v1+v2; return mcq(subject,chapter,i,`${v2}`, [`${v1}`,`${rhs}`,`${v2+1}`],`x + ${v1} = ${rhs} হলে x = ${v2}।`);
+      }
+      if(/অনুপাত/.test(chapter)){
+        return mcq(subject,chapter,i,`${v1}:${v2}`, [`${v2}:${v1}`,`${v1+1}:${v2}`,`${v1}:${v2+1}`],`প্রদত্ত অনুপাতটি ${v1}:${v2}।`);
+      }
+      if(/পরিসংখ্যান/.test(chapter)){
+        const nums=[v1,v2,v3,v1+v2]; const mean=nums.reduce((a,b)=>a+b,0)/nums.length;
+        return mcq(subject,chapter,i,`${mean}`, [`${mean+1}`,`${mean-1}`,`${mean+2}`],`${nums.join(", ")} এর গড় = ${mean}।`);
+      }
+      if(/ত্রিকোণমিতি/.test(chapter)) return mcq(subject,chapter,i,"sin²θ + cos²θ = 1",["sinθ+cosθ=1","sinθ-cosθ=1","tanθ+1=0"],"মৌলিক ত্রিকোণমিতিক পরিচিতি: sin²θ + cos²θ = 1।");
+      if(/সম্ভাবনা/.test(chapter)){
+        const total=v1+v2, fav=v1; return mcq(subject,chapter,i,`${fav}/${total}`,[`${v2}/${total}`,`${total}/${fav}`,`${fav}/${v2}`],`সম্ভাবনা = অনুকূল ফলাফল ÷ মোট ফলাফল = ${fav}/${total}।`);
+      }
+      if(/সেট/.test(chapter)) return mcq(subject,chapter,i,"উপাদানসমূহের সুনির্দিষ্ট সমষ্টি",["শুধু একটি সংখ্যা","একটি সমীকরণ","শুধু একটি রেখা"],"সেট হলো সুস্পষ্টভাবে নির্ধারিত বস্তুর সমষ্টি।");
+      if(/স্থানাঙ্ক/.test(chapter)) return mcq(subject,chapter,i,`(${v1}, ${v2})`,[`(${v2}, ${v1})`,`(${v1+1}, ${v2})`,`(${v1}, ${v2+1})`],"স্থানাঙ্কে x ও y মান জোড়া হিসেবে লেখা হয়।");
+      if(/ভেক্টর/.test(chapter)) return mcq(subject,chapter,i,"দিক ও মান দুটোই আছে",["শুধু মান আছে","শুধু দিক আছে","কোনোটিই নেই"],"ভেক্টরের মান ও দিক উভয়ই থাকে।");
+      if(/জ্যামিতি|সাদৃশ্য/.test(chapter)) return mcq(subject,chapter,i,"কোণ ও বাহুর সম্পর্ক",["শুধু রং","শুধু ওজন","শুধু সময়"],"জ্যামিতিতে আকৃতির কোণ, বাহু ও তাদের সম্পর্ক গুরুত্বপূর্ণ।");
+      return mcq(subject,chapter,i,chapter,[a,b,c],`${chapter} অধ্যায়ের নামটি সঠিকভাবে শনাক্ত করা হয়েছে।`);
+    }
+
+    if(subject==="physics"){
+      if(/ভৌত রাশি/.test(chapter)) return mcq(subject,chapter,i,`${v1} m`,[`${v1} kg`,`${v1} s`,`${v1} A`],`দৈর্ঘ্যের SI একক মিটার (m)।`);
+      if(/গতি/.test(chapter)){ const d=v1*10,t=v2; const speed=d/t; return mcq(subject,chapter,i,`${speed} m/s`,[`${d+t} m/s`,`${t/d} m/s`,`${d*t} m/s`],`বেগ = দূরত্ব ÷ সময় = ${d} ÷ ${t} = ${speed} m/s।`); }
+      if(/বল/.test(chapter)){ const m=v1,a=v2; return mcq(subject,chapter,i,`${m*a} N`,[`${m+a} N`,`${m/a} N`,`${a/m} N`],`F = ma = ${m}×${a} = ${m*a} N।`); }
+      if(/কাজ|শক্তি|ক্ষমতা/.test(chapter)){ const F=v1,sr=v2; return mcq(subject,chapter,i,`${F*sr} J`,[`${F+sr} J`,`${F/sr} J`,`${sr/F} J`],`কাজ W = Fs = ${F}×${sr} = ${F*sr} J।`); }
+      if(/তাপ/.test(chapter)){ const m=2,cx=4,dt=v1; return mcq(subject,chapter,i,`${m*cx*dt} J`,[`${m+cx+dt} J`,`${m*cx} J`,`${cx*dt} J`],`Q = mcΔT = ${m}×${cx}×${dt} = ${m*cx*dt} J।`); }
+      if(/তরঙ্গ|শব্দ/.test(chapter)){ const f=v1,lam=v2; return mcq(subject,chapter,i,`${f*lam} m/s`,[`${f+lam} m/s`,`${lam/f} m/s`,`${f/lam} m/s`],`তরঙ্গের বেগ v = fλ = ${f}×${lam} = ${f*lam} m/s।`); }
+      if(/প্রতিফলন/.test(chapter)) return mcq(subject,chapter,i,"আপতন কোণ = প্রতিফলন কোণ",["আপতন কোণ = 2×প্রতিফলন কোণ","প্রতিফলন কোণ = 0 সবসময়","কোনো সম্পর্ক নেই"],"প্রতিফলনের সূত্র অনুযায়ী আপতন কোণ ও প্রতিফলন কোণ সমান।");
+      if(/প্রতিসরণ/.test(chapter)) return mcq(subject,chapter,i,"মাধ্যম পরিবর্তনে আলোর দিক বদলাতে পারে",["আলো সবসময় থেমে যায়","আলো সবসময় দ্বিগুণ হয়","আলো অদৃশ্য হয়"],"মাধ্যম পরিবর্তনের সময় আলোর বেগ ও দিক পরিবর্তিত হতে পারে।");
+      if(/স্থির বিদ্যুৎ/.test(chapter)) return mcq(subject,chapter,i,"বৈদ্যুতিক আধান",["ভর","তাপমাত্রা","সময়"],"স্থির বিদ্যুৎ আধানের উপস্থিতি ও পারস্পরিক ক্রিয়ার সঙ্গে সম্পর্কিত।");
+      if(/চল বিদ্যুৎ/.test(chapter)) return mcq(subject,chapter,i,"V = IR",["F = ma","W = Fs","Q = mcΔT"],"ওহমের সূত্র V = IR।");
+    }
+
+    if(subject==="chemistry"){
+      if(/পরমাণুর গঠন/.test(chapter)) return mcq(subject,chapter,i,`${v1}`, [`${v2}`,`${v1+1}`,`${v1-1}`],`এই সেটে উদাহরণ হিসেবে পারমাণবিক সংখ্যা ${v1} ধরা হয়েছে।`);
+      if(/পর্যায় সারণি/.test(chapter)) return mcq(subject,chapter,i,"পারমাণবিক সংখ্যা",["রং","গন্ধ","আকার"],"আধুনিক পর্যায় সারণির ভিত্তি পারমাণবিক সংখ্যা।");
+      if(/রাসায়নিক বন্ধন/.test(chapter)) return mcq(subject,chapter,i,"পরমাণুর মধ্যে আকর্ষণজনিত সংযোগ",["শুধু রং পরিবর্তন","শুধু তাপমাত্রা","শুধু আয়তন"],"রাসায়নিক বন্ধন পরমাণুগুলোর মধ্যে সংযোগ সৃষ্টি করে।");
+      if(/রাসায়নিক বিক্রিয়া/.test(chapter)) return mcq(subject,chapter,i,"নতুন পদার্থ সৃষ্টি হতে পারে",["কোনো পরিবর্তনই হয় না","শুধু পাত্র বদলায়","শুধু ভর শূন্য হয়"],"রাসায়নিক বিক্রিয়ায় নতুন পদার্থ সৃষ্টি হতে পারে।");
+      if(/অম্ল/.test(chapter)) return mcq(subject,chapter,i,"অম্ল ও ক্ষারকের বৈশিষ্ট্য",["দ্রবণের রাসায়নিক ধর্ম","শুধু রং","শুধু গন্ধ","শুধু আয়তন"],"অম্ল-ক্ষারক দ্রবণের রাসায়নিক ধর্মের সঙ্গে সম্পর্কিত।");
+      if(/জৈব/.test(chapter)) return mcq(subject,chapter,i,"কার্বন-ভিত্তিক যৌগ",["শুধু ধাতু","শুধু পানি","শুধু লবণ"],"জৈব রসায়নে প্রধানত কার্বন-ভিত্তিক যৌগ অধ্যয়ন করা হয়।");
+    }
+
+    if(subject==="biology"){
+      if(/কোষ/.test(chapter)) return mcq(subject,chapter,i,"জীবদেহের গঠন ও কাজের মৌলিক একক",["অঙ্গ","তন্ত্র","অস্থি"],"কোষ জীবদেহের গঠন ও কাজের মৌলিক একক।");
+      if(/কোষ বিভাজন/.test(chapter)) return mcq(subject,chapter,i,"নতুন কোষ তৈরির প্রক্রিয়া",["শুধু হজম","শুধু শ্বাসক্রিয়া","শুধু রেচন"],"কোষ বিভাজনের মাধ্যমে নতুন কোষ সৃষ্টি হয়।");
+      if(/বংশগতি/.test(chapter)) return mcq(subject,chapter,i,"জিন",["রক্ত","পানি","খনিজ"],"জিন বংশগত বৈশিষ্ট্যের তথ্য বহন করে।");
+      if(/পরিবেশ|বাস্তু/.test(chapter)) return mcq(subject,chapter,i,"জীব ও অজীব উপাদানের পারস্পরিক সম্পর্ক",["শুধু আবহাওয়া","শুধু মাটি","শুধু পানি"],"বাস্তুতন্ত্রে জীব ও অজীব উপাদান পরস্পরের সঙ্গে সম্পর্কিত।");
+      if(/প্রজনন/.test(chapter)) return mcq(subject,chapter,i,"বংশবিস্তার",["শুধু বৃদ্ধি","শুধু চলন","শুধু খাদ্য গ্রহণ"],"প্রজনন হলো জীবের বংশবিস্তার প্রক্রিয়া।");
+    }
+
+    if(subject==="ict"){
+      if(/Internet/i.test(chapter)) return mcq(subject,chapter,i,"আন্তঃসংযুক্ত নেটওয়ার্কসমূহ",["একটি ফাইল","একটি কীবোর্ড","একটি ছবি"],"ইন্টারনেট বহু নেটওয়ার্কের আন্তঃসংযোগ।");
+      if(/Programming/i.test(chapter)) return mcq(subject,chapter,i,"অ্যালগরিদম ও নির্দেশনা",["শুধু ছবি","শুধু হার্ডওয়্যার","শুধু বিদ্যুৎ"],"প্রোগ্রামিংয়ে কম্পিউটারকে ধাপে ধাপে নির্দেশ দেওয়া হয়।");
+      return mcq(subject,chapter,i,"তথ্য ও যোগাযোগ প্রযুক্তি",["শুধু কাগজ","শুধু খেলাধুলা","শুধু রান্না"],"ICT তথ্য সংগ্রহ, প্রক্রিয়াকরণ ও যোগাযোগে ব্যবহৃত হয়।");
+    }
+
+    if(subject==="english1"||subject==="english2"){
+      if(/Grammar/i.test(chapter)) return mcq(subject,chapter,i,"correct use of grammar",["random words","only pictures","no sentence"],"Grammar helps us form correct sentences.");
+      if(/Reading/i.test(chapter)) return mcq(subject,chapter,i,"understanding the text",["counting letters","only copying","ignoring meaning"],"Reading comprehension focuses on understanding the text.");
+      if(/Writing|Composition/i.test(chapter)) return mcq(subject,chapter,i,"clear and organized ideas",["random sentences","only long words","no structure"],"Good writing presents ideas clearly and logically.");
+      return mcq(subject,chapter,i,"a complete English sentence",["a single letter","only punctuation","a random word"],"A sentence expresses a complete idea or thought.");
+    }
+
+    if(subject==="bangla"){
+      if(/ভাষা/.test(chapter)) return mcq(subject,chapter,i,"শুদ্ধ ও অর্থবহ ভাষা প্রয়োগ",["অর্থহীন শব্দ","শুধু ছবি","শুধু সংখ্যা"],"ভাষা অধ্যায়ে শুদ্ধ ও অর্থবহ প্রয়োগ গুরুত্বপূর্ণ।");
+      if(/সাহিত্য/.test(chapter)) return mcq(subject,chapter,i,"মূলভাব ও সাহিত্যিক উপাদান",["শুধু পৃষ্ঠার সংখ্যা","শুধু বইয়ের দাম","শুধু মুদ্রণ"],"সাহিত্য পাঠে মূলভাব ও সাহিত্যিক উপাদান বোঝা জরুরি।");
+      return mcq(subject,chapter,i,"ভাষা ও সাহিত্য",["শুধু গণনা","শুধু মানচিত্র","শুধু রসায়ন"],"বাংলা বিষয়ের ভাষা ও সাহিত্য অংশে ভাষা-সাহিত্য অনুশীলন করা হয়।");
+    }
+
+    if(subject==="history") return mcq(subject,chapter,i,"ঘটনার কারণ, ধারাবাহিকতা ও ফলাফল",["শুধু একটি সাল","শুধু একটি ছবি","শুধু একটি নাম"],`ইতিহাসে ${chapter} অধ্যায়ের ঘটনা বুঝতে কারণ, ধারাবাহিকতা ও ফলাফল দেখা হয়।`);
+    if(subject==="geography") return mcq(subject,chapter,i,"স্থান, পরিবেশ ও ভৌগোলিক বৈশিষ্ট্য",["শুধু গল্প","শুধু হিসাব","শুধু সাহিত্য"],`ভূগোলের ${chapter} অধ্যায়ে স্থান ও ভৌগোলিক বৈশিষ্ট্য গুরুত্বপূর্ণ।`);
+    if(subject==="civics") return mcq(subject,chapter,i,"রাষ্ট্র, নাগরিক ও শাসনব্যবস্থা",["শুধু আবহাওয়া","শুধু কৃষি","শুধু রসায়ন"],`পৌরনীতির ${chapter} অধ্যায়ে রাষ্ট্র ও নাগরিক-সম্পর্কিত ধারণা গুরুত্বপূর্ণ।`);
+    if(subject==="economics") return mcq(subject,chapter,i,"সম্পদ, চাহিদা ও অর্থনৈতিক সিদ্ধান্ত",["শুধু কবিতা","শুধু মানচিত্র","শুধু ব্যাকরণ"],`অর্থনীতির ${chapter} অধ্যায়ে অর্থনৈতিক সিদ্ধান্ত ও সম্পদ-সম্পর্কিত ধারণা গুরুত্বপূর্ণ।`);
+    if(subject==="accounting") return mcq(subject,chapter,i,"লেনদেনের সঠিক হিসাবরক্ষণ",["শুধু গল্প লেখা","শুধু পণ্য সাজানো","শুধু ছবি আঁকা"],`হিসাববিজ্ঞানের ${chapter} অধ্যায়ে সঠিক হিসাবরক্ষণ গুরুত্বপূর্ণ।`);
+    if(subject==="finance") return mcq(subject,chapter,i,"অর্থ, ব্যাংকিং ও আর্থিক সিদ্ধান্ত",["শুধু সাহিত্য","শুধু আবহাওয়া","শুধু খেলাধুলা"],`ফিন্যান্সের ${chapter} অধ্যায়ে আর্থিক ধারণা গুরুত্বপূর্ণ।`);
+    if(subject==="business") return mcq(subject,chapter,i,"ব্যবসা সংগঠন ও পরিচালনা",["শুধু কবিতা","শুধু জ্যামিতি","শুধু জীববিজ্ঞান"],`ব্যবসায় উদ্যোগের ${chapter} অধ্যায়ে ব্যবসা সংগঠন ও পরিচালনা গুরুত্বপূর্ণ।`);
+    if(subject==="religion") return mcq(subject,chapter,i,"নৈতিক ও মূল্যবোধসম্পন্ন জীবনচর্চা",["শুধু ব্যবসা","শুধু গণিত","শুধু ভূগোল"],`ধর্ম ও নৈতিক শিক্ষার ${chapter} অধ্যায়ে নৈতিক জীবনচর্চা গুরুত্বপূর্ণ।`);
+    return mcq(subject,chapter,i,chapter,[a,b,c],`${chapter} অধ্যায়ের প্রশ্ন।`);
+  }
+
+  Object.entries(CHAPTERS).forEach(([subject,chapters])=>chapters.forEach(chapter=>{
+    const existing=questionBank.filter(q=>q[0]===subject && q[1]===chapter);
+    const used=new Set(existing.map(q=>q[2]));
+    // Generate enough unique questions to bring every chapter to exactly 30.
+    let i=0;
+    while(existing.length<30 && i<300){
+      const q=build(subject,chapter,i++);
+      if(!used.has(q[2])){questionBank.push(q);used.add(q[2]);existing.push(q);}
+    }
+  }));
 })();
 
 let selectedGroup = "Science";
@@ -752,9 +846,6 @@ function login(){
 }
 function showApp(){const u=JSON.parse(localStorage.getItem(key));if(!u)return;loginScreenEl.classList.add("hidden");mainEl.classList.remove("hidden");userNameEl.textContent=u.name;document.getElementById("profileName").textContent=u.name;document.getElementById("profileMeta").textContent=`${u.cls||"Class 10"} • ${u.group||"Science"}`;document.getElementById("avatar").textContent=(u.name||"S").trim().charAt(0).toUpperCase();setGroup((u.group&&SUBJECTS[u.group])?u.group:"Science"); document.getElementById("quizClass").value=u.cls||"Class 10"; syncQuestionAmount()}
 function logout(){localStorage.removeItem(key);location.reload()}
-function fillChapters(){
-  const s=subjectEl.value;const set=[...new Set(questionBank.filter(x=>s==="all"||x[0]===s).map(x=>x[1]))];chapterEl.innerHTML='<option value="all">সব Chapter</option>'+set.map(x=>`<option>${x}</option>`).join("")
-}
 function makePool(){
   const s=subjectEl.value,c=chapterEl.value;
   return questionBank.filter(x=>(s==="all"||x[0]===s)&&(c==="all"||x[1]===c));
