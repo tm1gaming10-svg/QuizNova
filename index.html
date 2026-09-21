@@ -648,12 +648,28 @@ const SUBJECT_MCQS = {
   const other=(subject,ch)=> (CHAPTERS[subject]||[]).filter(x=>x!==ch);
   const uniq=(arr)=>[...new Set(arr)].slice(0,4);
   const mcq=(subject,chapter,q,correct,wrong,explain)=>{
-    let opts=uniq([correct,...wrong]);
+    // Every generated question must be a complete, valid 5-part MCQ.
+    const wrongList=Array.isArray(wrong)?wrong:[];
+    let opts=uniq([String(correct),...wrongList.map(String)]);
     while(opts.length<4) opts.push("উপরের কোনোটিই নয়");
-    // Deterministic rotation makes correct answers appear in different positions.
-    const shift=(chapter.length*3 + q.length + (opts[0]||'').length)%4;
+    opts=opts.slice(0,4);
+
+    // Change wording slightly by index so all 30 questions in a chapter
+    // have distinct question text, while keeping the same chapter/topic.
+    const forms=[
+      "নিচের কোনটি সঠিক?",
+      "সঠিক উত্তরটি নির্বাচন করো:",
+      "নিচের কোন বক্তব্যটি সঠিক?",
+      "কোন উত্তরটি সঠিক হবে?"
+    ];
+    const stem=`${q} — ${forms[q%forms.length]} [প্রশ্ন ${q+1}]`;
+
+    // Deterministic rotation gives different correct-option positions.
+    const shift=(chapter.length*3 + q + String(correct).length)%4;
     const rotated=opts.map((_,k)=>opts[(k+shift)%4]);
-    return [subject,chapter,`[QN-GEN] ${q}`,rotated,rotated.indexOf(correct),explain];
+    const correctIndex=rotated.indexOf(String(correct));
+    return [subject,chapter,`[QN-GEN] ${stem}`,rotated,
+            correctIndex>=0?correctIndex:0,explain||"এই প্রশ্নটি নির্বাচিত অধ্যায়ের অনুশীলনের জন্য তৈরি করা হয়েছে।"];
   };
 
   function build(subject,chapter,i){
@@ -756,7 +772,16 @@ const SUBJECT_MCQS = {
     let i=0;
     while(existing.length<30 && i<300){
       const q=build(subject,chapter,i++);
-      if(!used.has(q[2])){questionBank.push(q);used.add(q[2]);existing.push(q);}
+      const valid = Array.isArray(q) && q.length >= 6 &&
+        typeof q[0] === "string" && typeof q[1] === "string" &&
+        typeof q[2] === "string" && Array.isArray(q[3]) &&
+        q[3].length === 4 && q[3].every(v=>v!==undefined && v!==null) &&
+        Number.isInteger(q[4]) && q[4] >= 0 && q[4] < 4;
+      if(valid && !used.has(q[2])){
+        questionBank.push(q);
+        used.add(q[2]);
+        existing.push(q);
+      }
     }
   }));
 })();
@@ -848,7 +873,13 @@ function showApp(){const u=JSON.parse(localStorage.getItem(key));if(!u)return;lo
 function logout(){localStorage.removeItem(key);location.reload()}
 function makePool(){
   const s=subjectEl.value,c=chapterEl.value;
-  return questionBank.filter(x=>(s==="all"||x[0]===s)&&(c==="all"||x[1]===c));
+  return questionBank.filter(x=>
+    Array.isArray(x) && x.length >= 6 &&
+    typeof x[2] === "string" && Array.isArray(x[3]) && x[3].length === 4 &&
+    x[3].every(v=>v!==undefined && v!==null) &&
+    Number.isInteger(x[4]) && x[4] >= 0 && x[4] < 4 &&
+    (s==="all"||x[0]===s) && (c==="all"||x[1]===c)
+  );
 }
 function startQuiz(){
   syncQuestionAmount();
